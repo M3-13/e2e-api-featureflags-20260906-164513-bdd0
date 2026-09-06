@@ -22,7 +22,8 @@ func seedFlag(s *store.Store, key string, enabled bool, desc string, rollout int
 	_ = s.Create(store.Flag{Key: key, Enabled: enabled, Description: desc, RolloutPercent: rollout})
 }
 
-func doRequest(mux *http.ServeMux, method, path, body string) *httptest.ResponseRecorder {
+func doRequest(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
 	var r *http.Request
 	if body == "" {
 		r = httptest.NewRequest(method, path, nil)
@@ -30,7 +31,7 @@ func doRequest(mux *http.ServeMux, method, path, body string) *httptest.Response
 		r = httptest.NewRequest(method, path, strings.NewReader(body))
 	}
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, r)
+	h.ServeHTTP(w, r)
 	return w
 }
 
@@ -39,7 +40,7 @@ func TestUpdateSuccess(t *testing.T) {
 	seedFlag(s, "beta", false, "old", 50)
 	mux := newUpdateMux(s)
 
-	w := doRequest(mux, http.MethodPut, "/flags/beta", `{"enabled":true,"description":"new","rollout_percent":80}`)
+	w := doRequest(t, mux, http.MethodPut, "/flags/beta", `{"enabled":true,"description":"new","rollout_percent":80}`)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -59,7 +60,7 @@ func TestUpdateDefaults(t *testing.T) {
 	seedFlag(s, "beta", false, "old", 50)
 	mux := newUpdateMux(s)
 
-	w := doRequest(mux, http.MethodPut, "/flags/beta", `{"enabled":true}`)
+	w := doRequest(t, mux, http.MethodPut, "/flags/beta", `{"enabled":true}`)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -78,7 +79,7 @@ func TestUpdateUnknownKey(t *testing.T) {
 	s := store.NewStore(100)
 	mux := newUpdateMux(s)
 
-	w := doRequest(mux, http.MethodPut, "/flags/missing", `{"enabled":true}`)
+	w := doRequest(t, mux, http.MethodPut, "/flags/missing", `{"enabled":true}`)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
@@ -90,7 +91,7 @@ func TestUpdateMissingEnabled(t *testing.T) {
 	seedFlag(s, "beta", false, "old", 50)
 	mux := newUpdateMux(s)
 
-	w := doRequest(mux, http.MethodPut, "/flags/beta", `{"description":"x"}`)
+	w := doRequest(t, mux, http.MethodPut, "/flags/beta", `{"description":"x"}`)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -104,7 +105,7 @@ func TestUpdateInvalidRollout(t *testing.T) {
 
 	for _, p := range []int{-1, 101} {
 		body := `{"enabled":true,"rollout_percent":` + strconv.Itoa(p) + `}`
-		w := doRequest(mux, http.MethodPut, "/flags/beta", body)
+		w := doRequest(t, mux, http.MethodPut, "/flags/beta", body)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("rollout_percent %d: expected 400, got %d", p, w.Code)
 		}
@@ -116,7 +117,7 @@ func TestUpdateInvalidBody(t *testing.T) {
 	seedFlag(s, "beta", false, "old", 50)
 	mux := newUpdateMux(s)
 
-	w := doRequest(mux, http.MethodPut, "/flags/beta", `not json`)
+	w := doRequest(t, mux, http.MethodPut, "/flags/beta", `not json`)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -128,7 +129,7 @@ func TestDeleteSuccess(t *testing.T) {
 	seedFlag(s, "beta", false, "old", 50)
 	mux := newUpdateMux(s)
 
-	w := doRequest(mux, http.MethodDelete, "/flags/beta", "")
+	w := doRequest(t, mux, http.MethodDelete, "/flags/beta", "")
 
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", w.Code)
@@ -145,7 +146,7 @@ func TestDeleteUnknownKey(t *testing.T) {
 	s := store.NewStore(100)
 	mux := newUpdateMux(s)
 
-	w := doRequest(mux, http.MethodDelete, "/flags/missing", "")
+	w := doRequest(t, mux, http.MethodDelete, "/flags/missing", "")
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
