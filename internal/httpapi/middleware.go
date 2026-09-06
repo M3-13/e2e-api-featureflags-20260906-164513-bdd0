@@ -59,7 +59,7 @@ func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				log.Printf("recovered from panic: %v", rec)
+				log.Printf("recovered from panic (type %T)", rec)
 				writeError(w, http.StatusInternalServerError, "internal error")
 			}
 		}()
