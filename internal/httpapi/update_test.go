@@ -3,9 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
-	"strings"
 	"testing"
 
 	"featureflags/internal/store"
@@ -20,19 +18,6 @@ func newUpdateMux(s *store.Store) *http.ServeMux {
 
 func seedFlag(s *store.Store, key string, enabled bool, desc string, rollout int) {
 	_ = s.Create(store.Flag{Key: key, Enabled: enabled, Description: desc, RolloutPercent: rollout})
-}
-
-func doRequest(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	var r *http.Request
-	if body == "" {
-		r = httptest.NewRequest(method, path, nil)
-	} else {
-		r = httptest.NewRequest(method, path, strings.NewReader(body))
-	}
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-	return w
 }
 
 func TestUpdateSuccess(t *testing.T) {
