@@ -69,3 +69,48 @@ Ein Flag hat die Form:
 - Panic-Recovery- und Body-Limit-Middleware (max. 1 MiB)
 - Keine Speicherung von `user`-Werten — der Store hält ausschließlich
   Flag-Daten (`key`, `enabled`, `description`, `rollout_percent`)
+
+## Datenschutz
+
+Der `user`-Parameter des Evaluate-Endpunkts (`GET /flags/{key}/evaluate?user={id}`)
+wird ausschließlich transient zur deterministischen Evaluierung verarbeitet:
+Er fließt in den stabilen Hash (FNV-1a) ein und wird danach verworfen. Der
+Dienst speichert keinerlei Nutzer-IDs — weder dauerhaft im In-Memory-Store noch
+in Logs (die Logging-Middleware protokolliert nur Methode, Pfad, Statuscode und
+Dauer, niemals den `user`-Wert). Verarbeitet werden ausschließlich
+Flag-Daten (`key`, `enabled`, `description`, `rollout_percent`).
+
+Die Rechtsgrundlage der Verarbeitung richtet sich nach dem Einsatzszenario des
+Betreibers: bei einer Verarbeitung im Rahmen eines Vertragsverhältnisses
+Art. 6 Abs. 1 lit. b DSGVO, andernfalls Art. 6 Abs. 1 lit. f DSGVO
+(berechtigtes Interesse an der deterministischen Steuerung der
+Feature-Auslieferung). Der Betreiber ist verantwortlich dafür, die konkrete
+Rechtsgrundlage zu bestimmen und eine Datenschutzerklärung bereitzustellen, die
+über Art, Umfang und Zweck der Verarbeitung informiert.
+
+## Transport & TLS
+
+Der Dienst bindet standardmäßig nur an `127.0.0.1` (Loopback). Für den Betrieb
+jenseits der Maschinengrenze muss die TLS-Terminierung an einem vorgelagerten
+Reverse-Proxy erfolgen; der Dienst selbst spricht kein TLS. Der `user`-Parameter
+ist ein personenbezogenes Datum und darf ausschließlich verschlüsselt (über
+TLS/HTTPS) übertragen werden. Ein direktes unverschlüsseltes Exponieren des
+Dienstes ins Internet ist nicht vorgesehen und darf nicht erfolgen.
+
+## Betrieb & Updates
+
+Der Dienst ist ein eigenständiger Go-Prozess ohne externe Laufzeitabhängigkeiten.
+Updates werden eingespielt, indem eine neue Build-Artefakt aus dem Repository
+erzeugt und der laufende Prozess ersetzt wird:
+
+```sh
+go build ./...          # neues Artefakt bauen
+```
+
+Anschließend wird der bestehende Prozess gestoppt und der neu gebaute gestartet
+(`go run .` in der Entwicklung bzw. das gebaute Binary im produktiven Betrieb).
+Da der Dienst keinerlei persistenten Zustand hält (alle Flag-Daten liegen nur im
+Arbeitsspeicher), ist nach einem Neustart kein Migrations- oder Datenübernahme-
+Schritt erforderlich; der Store beginnt leer. Ein kontrolliertes Deployment
+(Stopp → Build → Start) stellt sicher, dass währenddessen keine parallelen
+Zugriffe auf einen veralteten Prozess erfolgen.

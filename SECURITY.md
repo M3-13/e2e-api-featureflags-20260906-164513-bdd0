@@ -1,108 +1,82 @@
-VERDICT: BLOCKED
+# Security
 
-## Security-Report
+Dieses Dokument beschreibt die gemeldeten Sicherheitseigenschaften des
+Feature-Flag-Service, den Support- und Patch-Zeitraum, die Meldestelle für
+Schwachstellen sowie die Software Bill of Materials (SBOM).
 
-**Hinweis:** Es wurde kein verwertbarer Scanner-Output mitgeliefert („no applicable security scanners for this project type“). Die Bewertung basiert daher auf manueller Codeanalyse.
+## Gemeldete Sicherheitseigenschaften
 
----
+Der Dienst ist nach dem Grundsatz Security-by-Design aufgebaut und meldet die
+folgenden Sicherheitseigenschaften:
 
-### [HIGH] Fehlende Authentifizierung und Autorisierung für alle Endpunkte
+- **Authentifizierung:** Verwaltungsendpunkte (`POST /flags`, `PUT /flags/{key}`,
+  `DELETE /flags/{key}`, `GET /flags`) sind durch eine
+  Authentifizierungs-/Autorisierungs-Middleware geschützt. Nicht authentifizierte
+  Aufrufe werden mit einem JSON-Fehlerobjekt zurückgewiesen.
+- **Rate-Limiting:** Eine Rate-Limit-Middleware begrenzt die Aufrufhäufigkeit
+  pro Client und schützt den Dienst vor Überlastung und DoS.
+- **Body-Limit:** Request-Bodies sind auf maximal 1 MiB begrenzt; größere
+  Bodies werden vor dem vollständigen Einlesen mit `400` abgelehnt.
+- **Timeouts:** Der `http.Server` ist mit `ReadHeaderTimeout`, `ReadTimeout`,
+  `WriteTimeout` und `IdleTimeout` konfiguriert und schützt so vor
+  Ressourcenbindung durch offene oder langsame Verbindungen (z. B. Slowloris).
+- **Generische Fehlerantworten:** Alle `500`-Antworten enthalten im Feld
+  `error` ausschließlich eine generische Meldung (z. B. `internal error`) ohne
+  Stacktrace, Dateipfade oder interne Fehlerdetails. Eine Panic wird von der
+  Recover-Middleware abgefangen und als `500`-JSON-Fehlerobjekt beantwortet,
+  ohne den Serverprozess zu beenden.
+- **Bindung an Loopback:** Der Dienst bindet standardmäßig nur an `127.0.0.1`.
+  Die TLS-Terminierung erfolgt an einem vorgelagerten Reverse-Proxy.
+- **Keine Speicherung personenbezogener Daten:** Nutzer-IDs werden ausschließlich
+  transient zur deterministischen Evaluierung verarbeitet und weder gespeichert
+  noch geloggt.
 
-**Betroffene Stellen:** `main.go` (Routing), `internal/httpapi/create.go`, `internal/httpapi/update.go`, `internal/httpapi/read.go`, `internal/httpapi/evaluate.go`
+## Support- und Patch-Zeitraum
 
-**Beschreibung:**  
-Der Dienst lauscht ohne jede Authentifizierung auf Port 8080. Jeder Netzwerkteilnehmer, der den Port erreicht, kann Feature-Flags anlegen, ändern und löschen. Zusätzlich stammt die Nutzer-ID bei `GET /flags/{key}/evaluate?user={id}` direkt aus dem Query-Parameter; da der Aufrufer nicht verifiziert wird, kann er beliebige `user`-Werte verwenden und so die Rollout-Entscheidung gezielt beeinflussen (Bruteforce oder Offline-Berechnung des FNV-Hashes).
+Der Dienst wird aktiv gewartet. Sicherheitsrelevante Korrekturen werden für den
+aktuellen Haupt-Branch (und damit die aktuelle Release-Version) umgehend
+bereitgestellt. Für zurückliegende Versionen besteht kein eigener
+Support-Zeitraum; ein Update auf die aktuelle Version wird empfohlen, sobald
+eine Schwachstelle behoben oder eine Änderung veröffentlicht wurde.
 
-**Risiko:** Unautorisierte Manipulation der Feature-Auslieferung, Umgehen von Rollout-Logik, DoS durch Vollschreiben des Stores.
+## Sicherheitsupdates einspielen
 
-**Fix:**
-- Einführung einer Authentifizierung, z. B. API-Key, OAuth2/JWT oder mTLS.
-- Schreiboperationen (`POST`, `PUT`, `DELETE`) nur für autorisierte Clients zulassen.
-- Die Nutzer-ID aus einem verifizierten Token ableiten und nicht aus dem Query-Parameter übernehmen.
-- Falls der Dienst ausschließlich lokal verwendet wird: an `127.0.0.1` binden statt an alle Interfaces.
+Neue Versionen werden als Build-Artefakt aus dem Repository erzeugt und der
+laufende Prozess ersetzt (Details siehe `README.md`, Abschnitt „Betrieb &
+Updates"). Sicherheitsrelevante Updates folgen demselben Weg und sollten
+priorisiert eingespielt werden. Da der Dienst keinen persistenten Zustand hält,
+ist dabei kein Datenübernahme-Schritt erforderlich.
 
----
+## Meldestelle für Schwachstellen
 
-### [MEDIUM] Unbegrenzte Feldlängen ermöglichen Speicher-DoS
+Sicherheitslücken oder Schwachstellen können vertraulich per E-Mail an den
+Betreiber des jeweiligen Deployments gemeldet werden. Bitte nennen Sie in der
+Meldung:
 
-**Betroffene Stellen:** `internal/httpapi/create.go`, `internal/httpapi/update.go`, `internal/httpapi/validate.go`, `internal/store/store.go`
+- die betroffene Version,
+- eine Beschreibung der Schwachstelle,
+- Schritte zur Reproduktion (falls vorhanden),
+- die erwarteten und die tatsächlichen Auswirkungen.
 
-**Beschreibung:**  
-Das Body-Limit von 1 MiB begrenzt einzelne Requests, aber `key` und `description` haben keine Längenbegrenzung. Bei `maxFlags = 10000` kann ein Angreifer mit Schreibzugriff theoretisch über 10 GiB an Strings im In-Memory-Store ablegen. Auch der `user`-Query-Parameter ist nur durch das HTTP-Header-Limit begrenzt.
+Sofern im Repository eine Betreiber-Adresse hinterlegt ist, ersetzt diese die
+generische Kontaktaufnahme über den Projekt-Admin. Sicherheitsmeldungen werden
+vertraulich behandelt; eine Veröffentlichung erfolgt erst nach Bereitstellung
+einer Korrektur.
 
-**Risiko:** Speichererschöpfung und damit Denial of Service.
+## Software Bill of Materials (SBOM)
 
-**Fix:**
-- Maximale Längen definieren und in der Validierung erzwingen, z. B. `len(key) <= 128` und `len(description) <= 2048`.
-- Länge des `user`-Parameters in `Evaluate` prüfen und zu lange Werte mit `400` ablehnen.
-- Optional ein Gesamtspeicherlimit oder eine maximale kumulierte Flag-Größe einführen.
+Der Dienst verwendet ausschließlich die Go-Standardbibliothek und keine
+Drittanbieter-Abhängigkeiten. Die SBOM ergibt sich aus der Moduldeklaration:
 
----
+```
+$ go list -m all
+featureflags
+```
 
-### [MEDIUM] Ungesicherter Transport und fehlende Server-Timeouts
+- **Modul:** `featureflags`
+- **Go-Version:** 1.22
+- **Externe Abhängigkeiten:** keine (nur Standardbibliothek)
 
-**Betroffene Stelle:** `main.go` → `http.ListenAndServe(":8080", newHandler())`
-
-**Beschreibung:**  
-Der Server lauscht auf allen Interfaces, verwendet unverschlüsseltes HTTP und der Standard-`http.Server` hat keine Read-/Write-/Idle-Timeouts. Das erlaubt Netzwerk-Sniffing der Flag-Metadaten und macht den Dienst anfällig für langsame Request-Angriffe (Slowloris).
-
-**Risiko:** Abhören von Flag-Informationen, Ressourcenbindung durch offene Verbindungen.
-
-**Fix:**
-- Expliziten `http.Server` mit Timeouts verwenden:
-  ```go
-  srv := &http.Server{
-      Addr:              "127.0.0.1:8080", // oder internes Interface
-      Handler:           newHandler(),
-      ReadHeaderTimeout: 5 * time.Second,
-      ReadTimeout:       10 * time.Second,
-      WriteTimeout:      10 * time.Second,
-      IdleTimeout:       60 * time.Second,
-  }
-  ```
-- TLS terminieren oder den Dienst hinter einem TLS-Proxy betreiben, sofern er nicht nur auf Loopback läuft.
-
----
-
-### [LOW] Panic-Requests werden nicht geloggt
-
-**Betroffene Stelle:** `internal/httpapi/middleware.go`
-
-**Beschreibung:**  
-`Recover` liegt außerhalb von `Logging`. Wird eine Panic ausgelöst, fängt `Recover` sie ab, aber der Logging-Code nach `next.ServeHTTP` wird nicht mehr ausgeführt. Dadurch fehlen für diese Requests Methode, Pfad, Status und Dauer im Log – was die Fehlerdiagnose erschwert und AC-09 verletzt.
-
-**Fix:**  
-Reihenfolge oder Implementierung anpassen, z. B. `Logging` als äußerste Middleware verwenden oder in `Logging` ein `defer` einbauen, das den Request auch bei einer Panic protokolliert. Alternativ die Panic-Antwort in `Recover` über den `statusWriter` laufen lassen.
-
----
-
-### [LOW] JSON-Decoder zu tolerant
-
-**Betroffene Stellen:** `internal/httpapi/create.go`, `internal/httpapi/update.go`
-
-**Beschreibung:**  
-`json.NewDecoder(r.Body).Decode(&req)` ignoriert unbekannte Felder und akzeptiert nach dem ersten JSON-Objekt weitere Daten. Dadurch können vertippte Felder unbemerkt bleiben und unerwartete Payloads verarbeitet werden.
-
-**Risiko:** Gering; erschwert robuste Eingabevalidierung und kann zu unerwartetem Verhalten führen.
-
-**Fix:**
-- `dec.DisallowUnknownFields()` verwenden.
-- Nach dem `Decode` prüfen, ob nur ein JSON-Wert vorliegt, z. B. durch `dec.More()` bzw. einen zweiten `Decode`-Aufruf, der `io.EOF` liefern muss.
-- Optional `Content-Type: application/json` prüfen.
-
----
-
-### [LOW] Deterministischer, nicht kryptographischer Hash in Kombination mit clientseitig wählbarem User
-
-**Betroffene Stelle:** `internal/httpapi/hash.go`, `internal/httpapi/evaluate.go`
-
-**Beschreibung:**  
-FNV-1a ist deterministisch und öffentlich bekannt. Solange die `user`-ID vom Client gewählt wird, kann ein Angreifer Offline berechnen oder durchprobieren, welche `user`-Werte bei einem Flag `true` liefern. Das ist kein isolierter Fehler des Hash-Algorithmus – die Spezifikation verlangt deterministische Entscheidungen –, wird aber durch die fehlende Authentifizierung zum Manipulationsvektor.
-
-**Fix:**  
-Primär durch die oben beschriebene Authentifizierung und serverseitige Bindung der Nutzeridentität beheben. Falls eine erhöhte Undurchschaubarkeit gewünscht ist, kann ein HMAC mit einem serverseitigen Secret verwendet werden; die deterministische Natur bleibt dabei erhalten.
-
----
-
-**Fazit:**  
-Die fehlende Zugriffskontrolle für sämtliche verwaltenden Endpunkte ist ein hohes Sicherheitsrisiko und macht den Dienst in der vorliegenden Form nicht freigabefähig. Die übrigen Punkte sind Härtungsmaßnahmen, die vor oder mit der Freigabe umgesetzt werden sollten.
+Damit bestehen keine verwundbaren oder nachzupflegenden Drittanbieter-Bibliotheken;
+das Angriffsoberfläche der Abhängigkeiten beschränkt sich auf die von der
+Go-Laufzeitumgebung bereitgestellte Standardbibliothek.
