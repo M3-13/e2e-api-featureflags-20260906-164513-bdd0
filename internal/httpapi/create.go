@@ -25,9 +25,9 @@ func Create(s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		if req.Enabled == nil {
-			writeError(w, http.StatusBadRequest, "enabled is required")
-			return
+		enabled := false
+		if req.Enabled != nil {
+			enabled = *req.Enabled
 		}
 
 		rolloutPercent := 100
@@ -46,7 +46,7 @@ func Create(s *store.Store) http.HandlerFunc {
 
 		flag := store.Flag{
 			Key:            req.Key,
-			Enabled:        *req.Enabled,
+			Enabled:        enabled,
 			Description:    req.Description,
 			RolloutPercent: rolloutPercent,
 		}

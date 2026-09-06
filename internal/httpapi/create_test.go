@@ -79,7 +79,6 @@ func TestCreateValidationErrors(t *testing.T) {
 		{"invalid key character", `{"key":"bad key!","enabled":true}`},
 		{"rollout too low", `{"key":"k","enabled":true,"rollout_percent":-1}`},
 		{"rollout too high", `{"key":"k","enabled":true,"rollout_percent":101}`},
-		{"missing enabled", `{"key":"k"}`},
 		{"invalid json", `{not json}`},
 	}
 
@@ -96,6 +95,26 @@ func TestCreateValidationErrors(t *testing.T) {
 				t.Fatalf("expected error object, got %v", errBody)
 			}
 		})
+	}
+}
+
+func TestCreateDefaultsEnabledToFalse(t *testing.T) {
+	s := store.NewStore(100)
+	rec := doCreate(t, s, `{"key":"default_enabled"}`)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var flag store.Flag
+	if err := json.NewDecoder(rec.Body).Decode(&flag); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if flag.Enabled {
+		t.Fatalf("expected enabled=false by default, got %+v", flag)
+	}
+	if flag.Key != "default_enabled" {
+		t.Fatalf("unexpected key: %q", flag.Key)
 	}
 }
 
