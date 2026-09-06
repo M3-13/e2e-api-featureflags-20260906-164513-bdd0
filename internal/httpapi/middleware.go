@@ -23,6 +23,8 @@ func (sw *statusWriter) WriteHeader(code int) {
 	sw.wroteHeader = true
 	if code == http.StatusMethodNotAllowed {
 		sw.Header().Set("Content-Type", "application/json")
+		sw.Header().Set("Cache-Control", "no-store")
+		sw.Header().Set("X-Content-Type-Options", "nosniff")
 	}
 	sw.ResponseWriter.WriteHeader(code)
 }
