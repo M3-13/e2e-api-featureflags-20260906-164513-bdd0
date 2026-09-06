@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"featureflags/internal/store"
@@ -20,8 +21,24 @@ func Update(s *store.Store) http.HandlerFunc {
 		key := r.PathValue("key")
 
 		var req updateRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		var extra any
+		if err := dec.Decode(&extra); err != io.EOF {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		if len(key) > 128 {
+			writeError(w, http.StatusBadRequest, "invalid key")
+			return
+		}
+		if !validDescription(req.Description) {
+			writeError(w, http.StatusBadRequest, "description too long")
 			return
 		}
 

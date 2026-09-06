@@ -15,6 +15,10 @@ func Evaluate(s *store.Store) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "user is required")
 			return
 		}
+		if len(user) > 128 {
+			writeError(w, http.StatusBadRequest, "invalid user")
+			return
+		}
 
 		flag, ok := s.Get(key)
 		if !ok {

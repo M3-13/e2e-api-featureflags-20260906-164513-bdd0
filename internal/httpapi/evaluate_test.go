@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"featureflags/internal/store"
@@ -46,6 +47,18 @@ func TestEvaluateMissingUserReturns400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestEvaluateUserTooLongReturns400(t *testing.T) {
+	s := newEvaluateStore(t)
+	longUser := strings.Repeat("u", 129)
+	req := evaluateRequest("enabled", "?user="+longUser)
+	rec := httptest.NewRecorder()
+	Evaluate(s)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for user > 128 chars, got %d", rec.Code)
 	}
 }
 
