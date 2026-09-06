@@ -11,7 +11,14 @@
       "start": ["go", "run", "."],
       "port": 8080,
       "health": { "path": "/healthz", "expect_status": [200] },
-      "env": {}
+      "env": {
+        "AUTH_TOKEN": {
+          "external": true,
+          "degraded_without": "protected routes answer 401 (fail-closed)"
+        },
+        "ADDR": { "dev": "127.0.0.1:8080" },
+        "RATE_LIMIT_RPS": { "dev": "50" }
+      }
     }
   ]
 }
