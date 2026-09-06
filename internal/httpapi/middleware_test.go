@@ -82,6 +82,35 @@ func TestRecover(t *testing.T) {
 	}
 }
 
+func TestRecoverDoesNotLogPanicValue(t *testing.T) {
+	var buf bytes.Buffer
+	orig := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(orig)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	})
+	h := Recover(next)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/flags", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status 500, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+	if body["error"] != "internal error" {
+		t.Fatalf("expected generic error %q, got %q", "internal error", body["error"])
+	}
+	if strings.Contains(buf.String(), "boom") {
+		t.Fatalf("log leaked panic value: %q", buf.String())
+	}
+}
+
 func TestLimitBody(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := io.ReadAll(r.Body)
