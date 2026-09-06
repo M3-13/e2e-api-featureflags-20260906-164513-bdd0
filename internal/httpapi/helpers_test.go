@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func doRequest(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+func doHTTPCall(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	var r *http.Request
 	if body == "" {
