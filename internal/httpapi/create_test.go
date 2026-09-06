@@ -134,3 +134,41 @@ func TestCreateLimitReturns400(t *testing.T) {
 		t.Fatalf("expected error object, got %v", errBody)
 	}
 }
+
+func TestCreateKeyTooLong(t *testing.T) {
+	s := store.NewStore(100)
+	longKey := strings.Repeat("a", 129)
+	rec := doCreate(t, s, `{"key":"`+longKey+`","enabled":true}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for key > 128 chars, got %d", rec.Code)
+	}
+}
+
+func TestCreateDescriptionTooLong(t *testing.T) {
+	s := store.NewStore(100)
+	longDesc := strings.Repeat("d", 2049)
+	rec := doCreate(t, s, `{"key":"k","enabled":true,"description":"`+longDesc+`"}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for description > 2048 chars, got %d", rec.Code)
+	}
+}
+
+func TestCreateUnknownField(t *testing.T) {
+	s := store.NewStore(100)
+	rec := doCreate(t, s, `{"key":"k","enabled":true,"unbekannt":1}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown JSON field, got %d", rec.Code)
+	}
+}
+
+func TestCreateTrailingValue(t *testing.T) {
+	s := store.NewStore(100)
+	rec := doCreate(t, s, `{"key":"k","enabled":true}{"key":"x","enabled":true}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for trailing JSON value, got %d", rec.Code)
+	}
+}

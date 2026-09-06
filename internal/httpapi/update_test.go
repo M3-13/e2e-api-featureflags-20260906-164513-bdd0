@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"featureflags/internal/store"
@@ -106,6 +107,43 @@ func TestUpdateInvalidBody(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateDescriptionTooLong(t *testing.T) {
+	s := store.NewStore(100)
+	seedFlag(s, "beta", false, "old", 50)
+	mux := newUpdateMux(s)
+
+	longDesc := strings.Repeat("d", 2049)
+	w := doHTTPCall(t, mux, http.MethodPut, "/flags/beta", `{"enabled":true,"description":"`+longDesc+`"}`)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for description > 2048 chars, got %d", w.Code)
+	}
+}
+
+func TestUpdateUnknownField(t *testing.T) {
+	s := store.NewStore(100)
+	seedFlag(s, "beta", false, "old", 50)
+	mux := newUpdateMux(s)
+
+	w := doHTTPCall(t, mux, http.MethodPut, "/flags/beta", `{"enabled":true,"unbekannt":1}`)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown JSON field, got %d", w.Code)
+	}
+}
+
+func TestUpdateKeyTooLong(t *testing.T) {
+	s := store.NewStore(100)
+	mux := newUpdateMux(s)
+
+	longKey := strings.Repeat("a", 129)
+	w := doHTTPCall(t, mux, http.MethodPut, "/flags/"+longKey, `{"enabled":true}`)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for key > 128 chars, got %d", w.Code)
 	}
 }
 

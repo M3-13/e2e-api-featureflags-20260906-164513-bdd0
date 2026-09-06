@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"featureflags/internal/store"
@@ -20,7 +21,14 @@ type createRequest struct {
 func Create(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		var extra any
+		if err := dec.Decode(&extra); err != io.EOF {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
@@ -37,6 +45,10 @@ func Create(s *store.Store) http.HandlerFunc {
 
 		if !validKey(req.Key) {
 			writeError(w, http.StatusBadRequest, "invalid key")
+			return
+		}
+		if !validDescription(req.Description) {
+			writeError(w, http.StatusBadRequest, "description too long")
 			return
 		}
 		if !validRolloutPercent(rolloutPercent) {
